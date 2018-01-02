@@ -82,7 +82,7 @@ uploadArchives {
                 licenses {
                     license {
                         name 'MIT License'
-                        url 'http://www.opensource.org/licenses/mit-license.php'
+                        url 'https://github.com/ladutsko/spring-boot-starter-hocon/blob/master/LICENSE'
                     }
                 }
 
