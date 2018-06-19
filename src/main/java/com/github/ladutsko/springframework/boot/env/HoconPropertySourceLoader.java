@@ -33,8 +33,11 @@ import org.springframework.core.io.Resource;
 import java.io.IOException;
 import java.util.Collection;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
+import static java.util.Collections.emptyList;
+import static java.util.Collections.singletonList;
 import static java.util.Collections.singletonMap;
 
 /**
@@ -46,7 +49,6 @@ public class HoconPropertySourceLoader implements PropertySourceLoader {
 
     /**
      * Returns the file extensions that the loader supports (excluding the '.').
-     *
      * @return the file extensions
      */
     @Override
@@ -55,29 +57,26 @@ public class HoconPropertySourceLoader implements PropertySourceLoader {
     }
 
     /**
-     * Load the resource into a property source.
-     *
-     * @param name     the name of the property source
+     * Load the resource into one or more property sources. Implementations may either
+     * return a list containing a single source, or in the case of a multi-document format
+     * such as yaml a source for each document in the resource.
+     * @param name the root name of the property source. If multiple documents are loaded
+     * an additional suffix should be added to the name for each source loaded.
      * @param resource the resource to load
-     * @param profile  the name of the profile to load or {@code null}. The profile can be
-     *                 used to load multi-document files (such as YAML). Simple property formats should
-     *                 {@code null} when asked to load a profile.
-     * @return a property source or {@code null}
+     * @return a list property sources
      * @throws IOException if the source cannot be loaded
      */
     @Override
-    public PropertySource<?> load(String name, Resource resource, String profile) throws IOException {
-        if (null == profile) {
-            Config config = ConfigFactory.parseURL(resource.getURL());
+    public List<PropertySource<?>> load(String name, Resource resource) throws IOException {
+        Config config = ConfigFactory.parseURL(resource.getURL());
 
-            Map<String, Object> result = new LinkedHashMap<>();
-            buildFlattenedMap(result, config.root().unwrapped(), null);
-            if (!result.isEmpty()) {
-                return new MapPropertySource(name, result);
-            }
+        Map<String, Object> result = new LinkedHashMap<>();
+        buildFlattenedMap(result, config.root().unwrapped(), null);
+        if (result.isEmpty()) {
+            return emptyList();
         }
 
-        return null;
+        return singletonList(new MapPropertySource(name, result));
     }
 
     private void buildFlattenedMap(Map<String, Object> result, Map<String, Object> source, String root) {
