@@ -44,11 +44,13 @@ import static java.util.Collections.singletonMap;
  * Strategy to load HOCON files into a {@link PropertySource}.
  *
  * @author <a href="mailto:ladutsko@gmail.com">George Ladutsko</a>
+ * @see YamlPropertySourceLoader
  */
 public class HoconPropertySourceLoader implements PropertySourceLoader {
 
     /**
      * Returns the file extensions that the loader supports (excluding the '.').
+     *
      * @return the file extensions
      */
     @Override
@@ -60,18 +62,24 @@ public class HoconPropertySourceLoader implements PropertySourceLoader {
      * Load the resource into one or more property sources. Implementations may either
      * return a list containing a single source, or in the case of a multi-document format
      * such as yaml a source for each document in the resource.
-     * @param name the root name of the property source. If multiple documents are loaded
-     * an additional suffix should be added to the name for each source loaded.
+     *
+     * @param name     the root name of the property source. If multiple documents are loaded
+     *                 an additional suffix should be added to the name for each source loaded.
      * @param resource the resource to load
      * @return a list property sources
      * @throws IOException if the source cannot be loaded
      */
     @Override
     public List<PropertySource<?>> load(String name, Resource resource) throws IOException {
-        Config config = ConfigFactory.parseURL(resource.getURL());
+        
+        if (!ClassUtils.isPresent("com.typesafe.config.Config", getClass().getClassLoader())) {
+            throw new IllegalStateException(
+                "Attempted to load " + name + " but com.typesafe:config was not found on the classpath");
+        }
 
-        Map<String, Object> result = new LinkedHashMap<>();
-        buildFlattenedMap(result, config.root().unwrapped(), null);
+        final Config config = ConfigFactory.parseURL(resource.getURL()).resolve();
+
+        final Map<String, Object> result = buildFlattenedMap(config.root().unwrapped());
         if (result.isEmpty()) {
             return emptyList();
         }
@@ -79,36 +87,35 @@ public class HoconPropertySourceLoader implements PropertySourceLoader {
         return singletonList(new MapPropertySource(name, result));
     }
 
-    private void buildFlattenedMap(Map<String, Object> result, Map<String, Object> source, String root) {
-        boolean rootHasText = (null != root && !root.trim().isEmpty());
+    private Map<String, Object> buildFlattenedMap(final Map<String, Object> root) {
 
-        source.forEach((key, value) -> {
-            String path;
+        final Map<String, Object> result = new LinkedHashMap<>();
 
-            if (rootHasText) {
-                if (key.startsWith("[")) {
-                    path = root + key;
-                } else {
-                    path = root + "." + key;
-                }
-            } else {
-                path = key;
+        root.forEach((prop, value) -> buildFlattenedMap(result, prop, value));
+
+        return result;
+    }
+
+    private void buildFlattenedMap(
+        final Map<String, Object> result,
+        final String path,
+        final Object value
+    ) {
+
+        if (value instanceof Map) {
+            @SuppressWarnings("unchecked")
+            final Map<String, Object> object = (Map<String, Object>) value;
+            object.forEach((k, v) ->
+                buildFlattenedMap(result, String.join(".", path, k), v)
+            );
+        } else if (value instanceof List) {
+            @SuppressWarnings("unchecked")
+            final List<Object> list = (List<Object>) value;
+            for (int idx = 0; idx < list.size(); idx++) {
+                buildFlattenedMap(result, path + "[" + idx + "]", list.get(idx));
             }
-
-            if (value instanceof Map) {
-                @SuppressWarnings("unchecked")
-                Map<String, Object> map = (Map<String, Object>) value;
-                buildFlattenedMap(result, map, path);
-            } else if (value instanceof Collection) {
-                @SuppressWarnings("unchecked")
-                Collection<Object> collection = (Collection<Object>) value;
-                int count = 0;
-                for (Object object : collection) {
-                    buildFlattenedMap(result, singletonMap("[" + (count++) + "]", object), path);
-                }
-            } else {
-                result.put(path, null == value ? "" : value);
-            }
-        });
+        } else {
+            result.put(path, value);
+        }
     }
 }
